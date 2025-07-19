@@ -1,0 +1,129 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+// Job represents a task to be processed.
+type Job struct {
+	ID      int
+	Payload string
+}
+
+// Worker handles incoming jobs.
+type Worker struct {
+	ID         int
+	JobChannel chan Job
+	WorkerPool chan chan Job // pool of worker job channels
+	QuitChan   chan bool
+}
+
+// Start launches the worker to listen for jobs.
+func (w *Worker) Start(wg *sync.WaitGroup) {
+	go func() {
+		defer wg.Done()
+		for {
+			// Register the current worker into the worker queue.
+			w.WorkerPool <- w.JobChannel
+
+			select {
+			case job := <-w.JobChannel:
+				// Simulate job processing time
+				log.Printf("Worker %d: Started job %d with payload '%s'\n", w.ID, job.ID, job.Payload)
+				time.Sleep(time.Millisecond * time.Duration(rand.Intn(500)))
+				log.Printf("Worker %d: Finished job %d\n", w.ID, job.ID)
+
+			case <-w.QuitChan:
+				log.Printf("Worker %d stopping.\n", w.ID)
+				return
+			}
+		}
+	}()
+}
+
+// Stop signals the worker to stop.
+func (w *Worker) Stop() {
+	go func() {
+		w.QuitChan <- true
+	}()
+}
+
+// Dispatcher distributes jobs to available workers.
+type Dispatcher struct {
+	WorkerPool chan chan Job
+	JobQueue   chan Job
+	MaxWorkers int
+	wg         sync.WaitGroup
+	workers    []*Worker
+}
+
+// NewDispatcher creates a dispatcher.
+func NewDispatcher(jobQueue chan Job, maxWorkers int) *Dispatcher {
+	pool := make(chan chan Job, maxWorkers)
+	return &Dispatcher{
+		WorkerPool: pool,
+		JobQueue:   jobQueue,
+		MaxWorkers: maxWorkers,
+	}
+}
+
+// Run starts the dispatcher and workers.
+func (d *Dispatcher) Run() {
+	// Start all workers
+	for i := 1; i <= d.MaxWorkers; i++ {
+		worker := &Worker{
+			ID:         i,
+			JobChannel: make(chan Job),
+			WorkerPool: d.WorkerPool,
+			QuitChan:   make(chan bool),
+		}
+		d.workers = append(d.workers, worker)
+		d.wg.Add(1)
+		worker.Start(&d.wg)
+	}
+
+	// Start job dispatcher loop
+	go d.dispatch()
+}
+
+// dispatch listens for incoming jobs and sends them to available workers
+func (d *Dispatcher) dispatch() {
+	for job := range d.JobQueue {
+		workerJobChannel := <-d.WorkerPool // wait for an available worker
+		workerJobChannel <- job            // assign the job
+	}
+}
+
+// Stop all workers gracefully
+func (d *Dispatcher) Stop() {
+	// Close all workers
+	for _, w := range d.workers {
+		w.Stop()
+	}
+	d.wg.Wait() // wait for all workers to finish
+}
+
+func main() {
+	jobQueue := make(chan Job, 100)
+	dispatcher := NewDispatcher(jobQueue, 4) // 4 workers
+	dispatcher.Run()
+
+	// Submit jobs
+	for i := 1; i <= 10; i++ {
+		job := Job{ID: i, Payload: fmt.Sprintf("Data-%d", i)}
+		jobQueue <- job
+	}
+
+	// Wait for jobs to be processed
+	time.Sleep(3 * time.Second)
+
+	// Stop the dispatcher & workers
+	close(jobQueue) // important to close so dispatch() exits
+	dispatcher.Stop()
+
+	log.Println("All jobs completed.")
+}
