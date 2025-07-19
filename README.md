@@ -1,13 +1,25 @@
 # Go Worker Pool System
 
-A worker pool and job queue system in Go for async job processing (emails, logs, etc).
+This is a lightweight and concurrent Worker Pool and Job Queue system written in Go. It supports multiple worker pools running concurrently, such as:
 
-## Features
-- Email dispatch queue
-- Log processor queue
-- Concurrency-safe worker pool
-- Graceful shutdown
+- ✅ **Email Dispatch Queue** – sends emails asynchronously.
+- 📄 **Log Processor Queue** – processes and stores logs in the background.
 
-## Run
-```bash
-go run main.go
+---
+
+## 🚀 Features
+
+- Efficient use of goroutines and channels.
+- Graceful shutdown of all workers.
+- Modular job types (`EmailJob`, `LogJob`) via interfaces.
+- Easy to extend (add retries, priorities, metrics).
+
+---
+
+## 📦 Structure
+
+```text
+main.go         # Entry point, sets up both dispatchers
+README.md       # Project documentation
+.gitignore      # Ignored files/folders
+go.mod          # Go module file
